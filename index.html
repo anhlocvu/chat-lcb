@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat LCB - Trợ lý AI Thông Minh</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --bg: #f5f6fa;
+            --user-bg: #dff9fb;
+            --bot-bg: #ffffff;
+            --border: #dcdde1;
+        }
+
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: var(--bg); display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--primary); color: white; padding: 1rem; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        main { flex: 1; display: flex; max-width: 1400px; margin: 0 auto; width: 100%; overflow: hidden; }
+        
+        /* Sidebar */
+        nav { width: 280px; background: #fff; border-right: 1px solid var(--border); padding: 1rem; display: flex; flex-direction: column; }
+        #session-list { list-style: none; padding: 0; flex: 1; overflow-y: auto; }
+        .session-item { padding: 10px; border-radius: 5px; cursor: pointer; border-bottom: 1px solid #f1f1f1; margin-bottom: 5px; }
+        .session-item.active { background: #3498db; color: white; }
+        
+        /* Chat area */
+        #chat-section { flex: 1; display: flex; flex-direction: column; position: relative; }
+        #chat-window { flex: 1; padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.5rem; }
+        
+        .message-container { display: flex; flex-direction: column; max-width: 85%; }
+        .user-container { align-self: flex-end; }
+        .bot-container { align-self: flex-start; }
+
+        h3.msg-header { margin: 0 0 5px 0; font-size: 0.9rem; color: #7f8c8d; font-weight: bold; }
+        .message-body { padding: 1rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); line-height: 1.5; white-space: pre-wrap; }
+        .user-body { background: var(--user-bg); border: 1px solid #c7ecee; }
+        .bot-body { background: var(--bot-bg); border: 1px solid var(--border); }
+
+        /* Thinking state */
+        #thinking { display: none; padding: 1rem; color: #7f8c8d; font-style: italic; }
+
+        /* Form */
+        #input-area { padding: 1.5rem; background: white; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
+        button { padding: 12px 24px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2980b9; }
+
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Chat LCB - Trợ lý AI Thông Minh</h1>
+</header>
+
+<main>
+    <nav aria-label="Lịch sử các phiên chat">
+        <h2>Hội thoại</h2>
+        <button onclick="createNewSession()" style="width:100%; margin-bottom:1rem;">+ Phiên mới</button>
+        <ul id="session-list" role="listbox"></ul>
+    </nav>
+
+    <section id="chat-section" aria-label="Nội dung trò chuyện">
+        <div id="chat-window" role="log" aria-live="polite">
+            <div class="message-container bot-container">
+                <h3 class="msg-header">Chat LCB</h3>
+                <div class="message-body bot-body">Chào Bạn! Tôi là Chat LCB. Hôm nay tôi có thể hỗ trợ gì cho Bạn?</div>
+            </div>
+        </div>
+        
+        <!-- Trạng thái đang nghĩ -->
+        <div id="thinking" aria-live="assertive">Chat LCB đang suy nghĩ...</div>
+
+        <form id="input-area" onsubmit="handleSend(event)">
+            <label for="user-input" class="sr-only">Nhập nội dung tin nhắn</label>
+            <input type="text" id="user-input" placeholder="Hỏi tôi bất cứ điều gì..." autocomplete="off">
+            <button type="submit">Gửi</button>
+        </form>
+    </section>
+</main>
+
+<script>
+    let currentSession = "default_session";
+
+    async function loadSessions() {
+        const res = await fetch('/api/sessions');
+        const data = await res.json();
+        const list = document.getElementById('session-list');
+        list.innerHTML = "";
+        data.sessions.forEach(s => {
+            const li = document.createElement('li');
+            li.className = `session-item ${s === currentSession ? 'active' : ''}`;
+            li.textContent = s;
+            li.onclick = () => { currentSession = s; loadSessions(); };
+            list.appendChild(li);
+        });
+    }
+
+    function createNewSession() {
+        const name = prompt("Tên phiên chat mới (ví dụ: am-nhac):");
+        if (name) { currentSession = name; loadSessions(); }
+    }
+
+    async function handleSend(e) {
+        e.preventDefault();
+        const input = document.getElementById('user-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        appendMsg('Người dùng', text, 'user');
+        input.value = "";
+        
+        // Hiện trạng thái đang nghĩ
+        const thinking = document.getElementById('thinking');
+        thinking.style.display = 'block';
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: text, session_id: currentSession })
+            });
+            const data = await res.json();
+            appendMsg('Chat LCB', data.answer, 'bot');
+        } catch (err) {
+            appendMsg('Lỗi', "Không kết nối được server.", 'bot');
+        } finally {
+            thinking.style.display = 'none';
+        }
+    }
+
+    function appendMsg(role, text, type) {
+        const win = document.getElementById('chat-window');
+        const container = document.createElement('div');
+        container.className = `message-container ${type}-container`;
+        
+        const header = document.createElement('h3');
+        header.className = 'msg-header';
+        header.textContent = role;
+        
+        const body = document.createElement('div');
+        body.className = `message-body ${type}-body`;
+        body.textContent = text;
+        
+        container.appendChild(header);
+        container.appendChild(body);
+        win.appendChild(container);
+        win.scrollTop = win.scrollHeight;
+    }
+
+    window.onload = loadSessions;
+</script>
+
+</body>
+</html>
